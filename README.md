@@ -1,6 +1,7 @@
 # AI-Powered Telegram Bot with n8n Workflow Automation
 
-![Uploading Screenshot 2025-08-29 123008.png…]()
+![Uploading Screenshot 2025-08-29 121527.png…]()
+
 
 ## 🚀 Workflow Architecture
 
