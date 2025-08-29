@@ -2,6 +2,27 @@
 
 ![Uploading Screenshot 2025-08-29 123008.png…]()
 
+## 🚀 Workflow Architecture
+
+```mermaid
+flowchart LR
+    User([User on Telegram]) -->|Sends text/voice/image| Bot[Telegram Bot]
+    Bot --> N8N[n8n Workflow]
+
+    N8N -->|Store/Fetch| Redis[(Redis Storage)]
+    N8N -->|Generate Caption & Content| GPT[OpenAI GPT]
+    N8N -->|Convert Voice to Text| Whisper[OpenAI Whisper]
+    N8N -->|Generate Image| Dalle[OpenAI DALL·E]
+
+    N8N -->|Publish Post| LinkedInAPI[LinkedIn API]
+    LinkedInAPI --> LinkedIn[LinkedIn (Published Post)]
+```
+
+
+
+
+
+
 
 🚀 **Advanced n8n workflow for building intelligent Telegram bots with AI content generation, voice processing, and image handling capabilities**
 ## 🛠️ Features
