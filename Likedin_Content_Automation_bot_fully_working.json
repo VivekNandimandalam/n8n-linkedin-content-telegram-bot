@@ -1,0 +1,1249 @@
+{
+  "name": "Active",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message",
+          "callback_query"
+        ],
+        "additionalFields": {}
+      },
+      "id": "f52bbb4d-813a-45c1-b321-55cc5ab9f769",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1,
+      "position": [
+        -2240,
+        400
+      ],
+      "webhookId": "f50567e1-ac51-47be-aa6f-fed1df011b03",
+      "credentials": {
+        "telegramApi": {
+          "id": "MVPxbtxESgjNLcyh",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.callback_query !== undefined }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equal"
+              },
+              "id": "e22fa0a4-3ec1-486a-83c9-92273ff6d936"
+            },
+            {
+              "id": "6972050a-405b-463e-b669-9d38ae6c2282",
+              "leftValue": "={{ $json.callback_query }}",
+              "rightValue": "",
+              "operator": {
+                "type": "object",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "bcc54211-bf80-4440-ad9a-38734f6ead87",
+              "leftValue": "={{ Boolean($json.callback_query) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {
+          "looseTypeValidation": false
+        }
+      },
+      "id": "f5dd8ebc-6782-4a8d-94e0-ebd3f7ce208a",
+      "name": "Is Callback Query?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -1632,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.callback_query.data }}",
+              "rightValue": "approve",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "id": "47df24cd-b4fe-4d79-bef8-d8bb1ab553b2"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "e0fb1bac-7504-4437-91e5-d04f818a646c",
+      "name": "Is Approved?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -1216,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "pop",
+        "list": "ai_post",
+        "propertyName": "=ai_post",
+        "options": {}
+      },
+      "id": "8dbbe670-9fcb-4a90-9671-6e8896090b95",
+      "name": "Get Stored Content",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        -608,
+        112
+      ],
+      "credentials": {
+        "redis": {
+          "id": "IpfF2H7JFldlVqZ6",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "language": "python",
+        "pythonCode": "import json\nimport base64\nfrom datetime import datetime\n\nfor item in _input.all():\n    if 'propertyName' in item.json:\n        try:\n            # Parse the JSON string\n            parsed_data = json.loads(item.json['propertyName'])\n            \n            # Extract and clean the LinkedIn content\n            linkedin_content = parsed_data.get('linkedinContent', '')\n            \n            # Clean up formatting\n            clean_content = linkedin_content.replace('\\\\\\\\n\\\\\\\\n', '\\n\\n')\n            clean_content = clean_content.replace('\\\\\\\\n', '\\n')\n            clean_content = clean_content.replace('\\\\\\\\*\\\\\\\\*', '**')\n            \n            # Add timestamp to make content unique\n            timestamp = datetime.now().strftime(\"%Y-%m-%d %H:%M\")\n            unique_content = f\"{clean_content}\\n\\n---\\nPosted on {timestamp}\"\n            \n            # Set clean fields\n            item.json['clean_post_text'] = unique_content\n            item.json['has_image'] = parsed_data.get('hasImage', False)\n            \n            # Handle binary image reconstruction\n            if parsed_data.get('hasImage', False) and 'imageBase64' in parsed_data:\n                # Convert base64 back to binary\n                image_data = base64.b64decode(parsed_data['imageBase64'])\n                \n                # Create binary object\n                item.binary = {\n                    'data': {\n                        'data': image_data,\n                        'mimeType': parsed_data.get('mimeType', 'image/png'),\n                        'fileName': parsed_data.get('fileName', 'linkedin_image.png')\n                    }\n                }\n                \n                item.json['is_image_post'] = True\n                item.json['route_to'] = 'image_post'\n            else:\n                item.json['is_image_post'] = False\n                item.json['route_to'] = 'text_post'\n            \n            # Extract chat ID from callback query\n            if 'callback_query' in item.json:\n                item.json['chat_id'] = item.json['callback_query']['message']['chat']['id']\n            \n            item.json['myNewField'] = 1\n            \n        except (json.JSONDecodeError, KeyError) as e:\n            item.json['clean_post_text'] = item.json.get('propertyName', '')\n            item.json['has_image'] = False\n            item.json['is_image_post'] = False\n            item.json['route_to'] = 'text_post'\n            item.json['chat_id'] = None\n\nreturn _input.all()"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -400,
+        112
+      ],
+      "id": "32729b00-19df-41da-bffa-55c3edf424a8",
+      "name": "Parse Stored Data"
+    },
+    {
+      "parameters": {
+        "person": "=yqm4FpDDLi",
+        "text": "={{ $('Is Approved?').item.json.callback_query.message.text }}",
+        "shareMediaCategory": "IMAGE",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.linkedIn",
+      "typeVersion": 1,
+      "position": [
+        832,
+        0
+      ],
+      "id": "cfde8126-80b7-4b53-81ab-3440a53c47eb",
+      "name": "Post with Image",
+      "credentials": {
+        "linkedInOAuth2Api": {
+          "id": "fQPYSI13jrUXWBC1",
+          "name": "LinkedIn account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "person": "=yqm4FpDDLi",
+        "text": "={{ $('Is Approved?').item.json.callback_query.message.text }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.linkedIn",
+      "typeVersion": 1,
+      "position": [
+        496,
+        192
+      ],
+      "id": "fbf63955-e19a-46d7-9acc-bf90c916d4dd",
+      "name": "Post Text Only",
+      "credentials": {
+        "linkedInOAuth2Api": {
+          "id": "fQPYSI13jrUXWBC1",
+          "name": "LinkedIn account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Is Approved?').item.json.callback_query.message.chat.id }}",
+        "text": "=🎉 **Success!** \n\nYour LinkedIn post has been published successfully!\n\n{{ $json.hasImage ? '🖼️ Post includes your generated image' : '📝 Text post published' }}\n\n✨ Check your LinkedIn profile to see it live.\n\n📱 Send me another topic for your next post!",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "776ac184-0c6c-40cb-9470-bd886d1fa9d8",
+      "name": "Send Success Message",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1024,
+        112
+      ],
+      "webhookId": "6dbed3d5-e4cd-413c-8c9a-ab06baf49bf6",
+      "credentials": {
+        "telegramApi": {
+          "id": "MVPxbtxESgjNLcyh",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "delete",
+        "key": "=linkedin_post_{{ $json.result.chat.id }}"
+      },
+      "id": "aa4b7d47-a34e-41a3-8c34-cf47e320cce1",
+      "name": "Cleanup Redis Data",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        1232,
+        112
+      ],
+      "credentials": {
+        "redis": {
+          "id": "IpfF2H7JFldlVqZ6",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.callback_query.message.chat.id }}",
+        "text": "❌ **Post Cancelled**\n\nNo problem at all! Your content wasn't posted.\n\n🚀 Send me a new topic whenever you're ready to create another LinkedIn post!\n\n💡 **Tips:**\n• Just type your topic\n• Send voice message\n• Mention \"with image\" if you want a visual",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "d567b67b-901a-4947-a5e5-73c5cd6d3099",
+      "name": "Send Cancel Message",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -608,
+        304
+      ],
+      "webhookId": "53e682bd-fda4-430e-8b00-02e859620dd9",
+      "credentials": {
+        "telegramApi": {
+          "id": "MVPxbtxESgjNLcyh",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "delete",
+        "key": "=linkedin_post_{{ $json.callback_query.from.id }}"
+      },
+      "id": "e0b10c13-c35e-480a-b06b-22d5106dd8a5",
+      "name": "Cleanup Cancelled Data",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        -400,
+        304
+      ],
+      "credentials": {
+        "redis": {
+          "id": "IpfF2H7JFldlVqZ6",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://api.telegram.org/bot7788297612:AAGtJBOJsUyW8TvD0qG9kkUaba69cWhWur0/getFile?file_id={{ $json.message.voice.file_id }}",
+        "options": {}
+      },
+      "id": "968b7229-fa76-47c1-a02d-80d6d9e27095",
+      "name": "Get File Path",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -816,
+        704
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.telegram.org/file/bot7788297612:AAGtJBOJsUyW8TvD0qG9kkUaba69cWhWur0/{{ $json.result.file_path }}",
+        "options": {}
+      },
+      "id": "f002366f-6bf5-46dc-b6dd-5ac82c02dc3f",
+      "name": "Download Voice File",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -608,
+        704
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "audio",
+        "operation": "transcribe",
+        "options": {
+          "language": "en"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        -416,
+        704
+      ],
+      "id": "410f02ee-ec7c-429b-bf42-d85174e8dce6",
+      "name": "Transcribe Audio",
+      "credentials": {
+        "openAiApi": {
+          "id": "BztOGWlOAhVcI0m5",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Merge transcribed text or direct text input\nlet inputText = '';\nlet chatId = '';\nlet userId = '';\n\nif ($json.text) {\n  // From transcription\n  inputText = $json.text;\n  chatId = $node['Telegram Trigger'].json.message.chat.id;\n  userId = $node['Telegram Trigger'].json.message.from.id;\n} else if ($json.message && $json.message.text) {\n  // From direct text message\n  inputText = $json.message.text;\n  chatId = $json.message.chat.id;\n  userId = $json.message.from.id;\n}\n\nreturn [{\n  json: {\n    inputText: inputText,\n    chatId: chatId,\n    userId: userId\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -208,
+        608
+      ],
+      "id": "2384cb69-36dd-4ae8-894c-58a73b64238c",
+      "name": "Merge Input Text"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "=🤖 **Processing your request...**\n\n⚡ Analyzing your content\n🧠 Generating LinkedIn post\n{{ $json.inputText.toLowerCase().includes('image') || $json.inputText.toLowerCase().includes('picture') || $json.inputText.toLowerCase().includes('visual') || $json.inputText.toLowerCase().includes('graphic') ? '🎨 Creating professional image' : '' }}\n\n⏱️ This will take ~10-15 seconds...",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "49dacd54-46da-486e-a90b-de85a9641b69",
+      "name": "Send Processing Message",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        608
+      ],
+      "webhookId": "0b836b94-0ba0-48f9-8851-ef94b2c99f78",
+      "credentials": {
+        "telegramApi": {
+          "id": "MVPxbtxESgjNLcyh",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4O-MINI"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "You are an AI assistant that analyzes user input to determine if they want an image generated for their LinkedIn post.\n\nAnalyze the following text and respond with ONLY 'YES' if the user mentions:\n- image, picture, visual, graphic, illustration\n- \"with image\", \"add image\", \"create visual\"\n- photo, artwork, design, infographic\n- Any visual-related requests\n\nOtherwise respond with 'NO'.\n\nExamples:\n- 'Create a post about AI with an image' → YES\n- 'I want a picture for my LinkedIn post' → YES\n- 'Generate a visual about marketing' → YES\n- 'Add illustration to this content' → YES\n- 'Make a graphic for this topic' → YES\n- 'Write a blog about climate change' → NO\n- 'Create a post about my company' → NO\n- 'Tell me about productivity tips' → NO",
+              "role": "system"
+            },
+            {
+              "content": "={{ $('Merge Input Text').item.json.inputText }}"
+            }
+          ]
+        },
+        "options": {
+          "maxTokens": 5
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        224,
+        608
+      ],
+      "id": "2d746007-371d-4ba4-8965-ff10d2b6c866",
+      "name": "Check Image Request",
+      "credentials": {
+        "openAiApi": {
+          "id": "BztOGWlOAhVcI0m5",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4O-MINI"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "You are a LinkedIn content strategist and professional writer.\n\n📝 **Content Guidelines:**\n• Write 150-300 words\n• Professional yet engaging tone\n• Use 3-5 relevant emojis (strategically placed)\n• Add line breaks for readability\n• Include actionable insights or tips\n• End with 6-10 targeted hashtags\n• Ask thought-provoking questions to boost engagement\n• Use bullet points or numbered lists when helpful\n• Focus on providing real value to professionals\n• Make it shareable and comment-worthy\n\n🎯 **Engagement Strategy:**\n• Hook readers in first 2 lines\n• Share personal insights or experiences when relevant\n• Include industry trends or data points\n• End with a call-to-action or question\n\nCreate compelling LinkedIn content that professionals will want to engage with.",
+              "role": "system"
+            },
+            {
+              "content": "={{ $('Merge Input Text').item.json.inputText }}"
+            }
+          ]
+        },
+        "options": {
+          "maxTokens": 800
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        576,
+        608
+      ],
+      "id": "36ea1deb-cfb9-484f-b4b8-cdb4246a3723",
+      "name": "Generate LinkedIn Content",
+      "credentials": {
+        "openAiApi": {
+          "id": "BztOGWlOAhVcI0m5",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $('Check Image Request').item.json.message.content }}",
+              "rightValue": "YES",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "id": "a73344ac-b58d-4bbf-b6b2-17530931f30b"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "938639c6-fe3a-4d13-abbd-3724aa01e2cf",
+      "name": "Should Generate Image?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1008,
+        608
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "image",
+        "prompt": "=Create a professional, modern LinkedIn-style illustration for this topic: {{ $node['Merge Input Text'].json.inputText }}\n\n🎨 **Style Requirements:**\n- Clean, corporate-friendly design\n- Professional color palette (blues, grays, whites, accent colors)\n- Modern flat design or subtle 3D elements\n- High contrast and visually appealing\n- Suitable for LinkedIn social media\n- No text overlays or words in image\n- Business/professional theme\n- Inspirational and engaging visual\n- Could include: charts, graphs, icons, people, technology, business concepts\n- Make it eye-catching but professional",
+        "options": {
+          "size": "1024x1024",
+          "style": "natural"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        1440,
+        288
+      ],
+      "id": "a5242ab4-309d-40bc-a3a2-d2c6b808d286",
+      "name": "Generate Image",
+      "credentials": {
+        "openAiApi": {
+          "id": "BztOGWlOAhVcI0m5",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const inputData = $node['Merge Input Text'].json;\nconst contentData = $node['Generate LinkedIn Content'].json;\nconst currentInput = $input.first();\n\nlet hasImage = false;\nlet base64ImageData = null;\nlet imageCheckData = null;\nlet extractFileData = null;\n\n// Safely get data from nodes that might not have executed\ntry {\n  imageCheckData = $node['Check Image Request']?.json;\n} catch (error) {\n  console.log('Check Image Request node not executed');\n  imageCheckData = null;\n}\n\ntry {\n  extractFileData = $node['Extract from File']?.json;\n} catch (error) {\n  console.log('Extract from File node not executed');\n  extractFileData = null;\n}\n\n// Check if user requested image (only if the node executed)\nconst imageRequested = imageCheckData && \n  imageCheckData.message && \n  imageCheckData.message.content && \n  imageCheckData.message.content.trim().toUpperCase() === 'YES';\n\n// Method 1: Check if we have base64 data from Extract from File node\nif (extractFileData && extractFileData.data) {\n  base64ImageData = extractFileData.data;\n  hasImage = true;\n}\n\n// Method 2: Check if we have binary image data\nconst hasBinaryImage = !!(currentInput.binary && currentInput.binary.data);\nif (imageRequested && hasBinaryImage) {\n  hasImage = true;\n}\n\n// Method 3: If Extract from File node has the base64 in a different field\nif (extractFileData && (extractFileData.base64 || extractFileData.content || extractFileData.result)) {\n  base64ImageData = extractFileData.base64 || extractFileData.content || extractFileData.result;\n  hasImage = true;\n}\n\nconst output = {\n  linkedinContent: contentData?.message?.content || contentData?.content || 'No content available',\n  hasImage: hasImage,\n  base64Image: base64ImageData,\n  chatId: inputData?.chatId || null,\n  userId: inputData?.userId || null,\n  binaryImageAvailable: hasBinaryImage,\n  imageRequested: imageRequested || false,\n  // Include data only if nodes executed\n  extractedFileData: extractFileData || null,\n  imageCheckResult: imageCheckData || null\n};\n\n// Pass through both JSON data and binary data if available\nconst result = {\n  json: output\n};\n\n// Only add binary property if it exists and is an object\nif (currentInput.binary && typeof currentInput.binary === 'object') {\n  result.binary = currentInput.binary;\n}\n\nreturn [result];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2192,
+        624
+      ],
+      "id": "aa45ca5a-a1b4-4284-96ef-aa2f168daeb5",
+      "name": "Combine All Data"
+    },
+    {
+      "parameters": {
+        "operation": "sendPhoto",
+        "chatId": "={{ $('If').item.json.chatId }}",
+        "binaryData": true,
+        "additionalFields": {
+          "caption": "🎨 **Generated Image for your LinkedIn post**",
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "250d3d5e-50d4-488a-89d7-afac1a64895b",
+      "name": "Send Preview",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        3664,
+        352
+      ],
+      "webhookId": "356952c9-4860-4afa-820d-3de55e0c57b8",
+      "credentials": {
+        "telegramApi": {
+          "id": "MVPxbtxESgjNLcyh",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId || $json.result.chat.id }}",
+        "text": "= {{ $('Combine All Data').item.json.linkedinContent }} ",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "✅ Publish to LinkedIn",
+                    "additionalFields": {
+                      "callback_data": "approve"
+                    }
+                  },
+                  {
+                    "text": "❌ Cancel",
+                    "additionalFields": {
+                      "callback_data": "cancel"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        4224,
+        624
+      ],
+      "id": "70a35b05-5a55-49d2-ba2d-3170eaaa22c5",
+      "name": "Send a text message",
+      "webhookId": "7fec1777-36f4-4882-bbb0-96320d40af25",
+      "credentials": {
+        "telegramApi": {
+          "id": "MVPxbtxESgjNLcyh",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "62d655c5-c35f-45d1-adeb-739cb26746e5",
+              "leftValue": "={{ $json.hasImage }}",
+              "rightValue": "=",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2976,
+        624
+      ],
+      "id": "94235d45-2592-4295-99c3-2e76e940e34a",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "language": "python",
+        "pythonCode": "for item in _input.all():\n    # Add debug fields\n    item.json.debug_callback_exists = bool(item.json.get('callback_query'))\n    item.json.debug_callback_data = item.json.get('callback_query', {}).get('data', 'not_found')\n    item.json.debug_has_callback = 'callback_query' in item.json\n    item.json.myNewField = 1\n\nreturn _input.all()\n\n\n\nimport json\n\nfor item in _input.all():\n    # Parse the JSON string in propertyName\n    if 'propertyName' in item.json:\n        try:\n            # Parse the JSON string\n            parsed_data = json.loads(item.json['propertyName'])\n            \n            # Extract and clean the LinkedIn content\n            linkedin_content = parsed_data.get('linkedinContent', '')\n            \n            # Clean up formatting - remove escape characters\n            clean_content = linkedin_content.replace('\\\\n\\\\n', '\\n\\n')\n            clean_content = clean_content.replace('\\\\n', '\\n')\n            clean_content = clean_content.replace('\\\\*\\\\*', '**')\n            \n            # Set clean fields\n            item.json['clean_post_text'] = clean_content\n            item.json['has_image'] = parsed_data.get('hasImage', False)\n            item.json['myNewField'] = 1\n            \n        except json.JSONDecodeError as e:\n            # If JSON parsing fails, use original\n            item.json['clean_post_text'] = item.json['propertyName']\n            item.json['has_image'] = False\n    \nreturn _input.all()"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2032,
+        400
+      ],
+      "id": "428c24d6-5680-476b-b23e-74f0e432c3bb",
+      "name": "Code"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "fbc29b59-d9ff-4f27-8210-76d46e66cea0",
+              "leftValue": "={{ !$json.ai_post }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        16,
+        112
+      ],
+      "id": "493c818b-f748-4bf1-b423-5b90f3a96a11",
+      "name": "If1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nfor (const item of items) {\n  if (item.json.hasImage && item.binary && item.binary.data) {\n    // Convert binary to base64 for Redis storage\n    const binaryData = item.binary.data;\n    const base64Image = binaryData.toString('base64');\n    \n    // Store in Redis with base64 image\n    const redisData = {\n      linkedinContent: item.json.linkedinContent,\n      hasImage: item.json.hasImage,\n      imageBase64: base64Image,\n      mimeType: item.binary.data.mimeType || 'image/png',\n      fileName: item.binary.data.fileName || 'generated_image.png'\n    };\n    \n    item.json.redisData = JSON.stringify(redisData);\n  } else {\n    // No image case\n    const redisData = {\n      linkedinContent: item.json.linkedinContent,\n      hasImage: false\n    };\n    \n    item.json.redisData = JSON.stringify(redisData);\n  }\n}\n\nreturn items;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2400,
+        624
+      ],
+      "id": "9f3c6f24-6b0a-4e78-9da1-219feeef97e8",
+      "name": "Store Binary in Memory"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nfor (const item of items) {\n  const userId = item.json.callback_query?.from?.id;\n  \n  if (item.json.has_image && userId) {\n    // Get the binary data from workflow memory\n    const storedBinary = $execution.getWorkflowStaticData('binaryImage_' + userId);\n    \n    if (storedBinary && storedBinary.binary) {\n      // Add the binary data back to the item\n      item.binary = storedBinary.binary;\n      \n      // Clean up memory after use\n      $execution.setWorkflowStaticData('binaryImage_' + userId, null);\n    }\n  }\n}\n\nreturn items;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -192,
+        112
+      ],
+      "id": "497d2789-934c-48bd-b2b5-0acb8bb05f6a",
+      "name": "Get Binary from Memory"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Store in Redis2').item.json.chatId }}",
+        "text": "=📋 **LinkedIn Post Preview** ━━━━━━━━━━━━━━━━━━━━━━━━━━  {{ $('Combine All Data2').item.json.linkedinContent }}  ━━━━━━━━━━━━━━━━━━━━━━━━━━  **What would you like to do?**",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "✅ Publish to LinkedIn",
+                    "additionalFields": {
+                      "callback_data": "approve"
+                    }
+                  },
+                  {
+                    "text": "❌ Cancel",
+                    "additionalFields": {
+                      "callback_data": "cancel"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        4848,
+        2496
+      ],
+      "id": "a2d38c05-d5a2-4d8d-bcc4-3f3a940ca8e5",
+      "name": "Send a text message2",
+      "webhookId": "7fec1777-36f4-4882-bbb0-96320d40af25"
+    },
+    {
+      "parameters": {
+        "operation": "binaryToPropery",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        1648,
+        288
+      ],
+      "id": "9677f575-b9c9-4d2f-a390-1512745b4acc",
+      "name": "Extract from File"
+    },
+    {
+      "parameters": {
+        "operation": "push",
+        "list": "=ai_post",
+        "messageData": "={{ $json.base64Image || '' }}"
+      },
+      "id": "24b9f538-19d4-4e2e-a3bd-b7d7d132238d",
+      "name": "Store in Redis1",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        2672,
+        624
+      ],
+      "credentials": {
+        "redis": {
+          "id": "IpfF2H7JFldlVqZ6",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "toBinary",
+        "sourceProperty": "base64Image",
+        "options": {
+          "fileName": "={{ $json.linkedinContent }}"
+        }
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        3184,
+        528
+      ],
+      "id": "ef4b0b3c-9f3f-438e-9d94-17f20dac5af9",
+      "name": "Convert to File"
+    },
+    {
+      "parameters": {
+        "operation": "toBinary",
+        "sourceProperty": "ai_post",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        224,
+        16
+      ],
+      "id": "83752f7a-7ff3-4419-8388-7f48568c0673",
+      "name": "Convert to File1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconsole.log('Full message:', input.message);\nconsole.log('Voice field:', input.message.voice);\nconsole.log('Voice exists?', !!input.message.voice);\nconsole.log('Voice type:', typeof input.message.voice);\nreturn [$input.first()];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1424,
+        496
+      ],
+      "id": "c9a90d1c-91fe-4326-a477-7b35dd2d310d",
+      "name": "Code1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "f91cd555-c83f-4967-a2e0-6fcf879e7b0d",
+              "leftValue": "={{ $json.message.voice && $json.message.voice.file_id ? 'true' : 'false' }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -1168,
+        656
+      ],
+      "id": "ca0b4579-b21d-468e-9b2e-ed73d4f41e43",
+      "name": "If2"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Callback Query?": {
+      "main": [
+        [
+          {
+            "node": "Is Approved?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Approved?": {
+      "main": [
+        [
+          {
+            "node": "Get Stored Content",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Cancel Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Stored Content": {
+      "main": [
+        [
+          {
+            "node": "Parse Stored Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Stored Data": {
+      "main": [
+        [
+          {
+            "node": "Get Binary from Memory",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post with Image": {
+      "main": [
+        [
+          {
+            "node": "Send Success Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post Text Only": {
+      "main": [
+        [
+          {
+            "node": "Send Success Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Success Message": {
+      "main": [
+        [
+          {
+            "node": "Cleanup Redis Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Cancel Message": {
+      "main": [
+        [
+          {
+            "node": "Cleanup Cancelled Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get File Path": {
+      "main": [
+        [
+          {
+            "node": "Download Voice File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Voice File": {
+      "main": [
+        [
+          {
+            "node": "Transcribe Audio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transcribe Audio": {
+      "main": [
+        [
+          {
+            "node": "Merge Input Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Input Text": {
+      "main": [
+        [
+          {
+            "node": "Send Processing Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Processing Message": {
+      "main": [
+        [
+          {
+            "node": "Check Image Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Image Request": {
+      "main": [
+        [
+          {
+            "node": "Generate LinkedIn Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate LinkedIn Content": {
+      "main": [
+        [
+          {
+            "node": "Should Generate Image?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Should Generate Image?": {
+      "main": [
+        [
+          {
+            "node": "Generate Image",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Combine All Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Image": {
+      "main": [
+        [
+          {
+            "node": "Extract from File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Combine All Data": {
+      "main": [
+        [
+          {
+            "node": "Store Binary in Memory",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Preview": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Convert to File",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "Is Callback Query?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If1": {
+      "main": [
+        [
+          {
+            "node": "Convert to File1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Post Text Only",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Binary in Memory": {
+      "main": [
+        [
+          {
+            "node": "Store in Redis1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Binary from Memory": {
+      "main": [
+        [
+          {
+            "node": "If1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File": {
+      "main": [
+        [
+          {
+            "node": "Combine All Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store in Redis1": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to File": {
+      "main": [
+        [
+          {
+            "node": "Send Preview",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to File1": {
+      "main": [
+        [
+          {
+            "node": "Post with Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code1": {
+      "main": [
+        [
+          {
+            "node": "If2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If2": {
+      "main": [
+        [
+          {
+            "node": "Get File Path",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Merge Input Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "69e32838-4d1d-45e0-8dcb-e27dede6ceca",
+  "meta": {
+    "instanceId": "91a0b24608cc73cdf293e80696e997dd56c2c12137b22e220123a8af553e9785"
+  },
+  "id": "xdnViBekZEx6vERD",
+  "tags": []
+}
