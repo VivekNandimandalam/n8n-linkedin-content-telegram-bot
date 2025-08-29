@@ -15,8 +15,9 @@ flowchart LR
     N8N -->|Generate Image| Dalle[OpenAI DALL·E]
 
     N8N -->|Publish Post| LinkedInAPI[LinkedIn API]
-    LinkedInAPI --> LinkedIn[LinkedIn (Published Post)]
+    LinkedInAPI --> LinkedIn[LinkedIn Published Post]
 ```
+
 
 
 
